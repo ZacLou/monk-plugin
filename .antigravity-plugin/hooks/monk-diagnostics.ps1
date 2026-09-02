@@ -20,7 +20,32 @@ $agent = if ($env:MONK_AGENT_PATH) { $env:MONK_AGENT_PATH } else { Join-Path $In
 
 if (-not (Test-Path $agent)) { exit 0 }
 
-# The binary reads the payload straight from stdin (see block-monk.ps1 for why we
-# do not read it into a PowerShell string and re-pipe it).
-try { & $agent hook diagnostics --format antigravity } catch { }
+# Run via Process (not the `&` call operator) so a wedged helper can be bounded
+# and killed instead of blocking this best-effort hook indefinitely. Standard
+# handles are left un-redirected so the binary still reads the payload straight
+# from this process's inherited stdin (see block-monk.ps1 for why we do not
+# read it into a PowerShell string and re-pipe it).
+$startInfo = New-Object System.Diagnostics.ProcessStartInfo
+$startInfo.FileName = $agent
+$startInfo.Arguments = "hook diagnostics --format antigravity"
+$startInfo.UseShellExecute = $false
+$startInfo.CreateNoWindow = $true
+
+$agentProcess = $null
+try {
+  $agentProcess = New-Object System.Diagnostics.Process
+  $agentProcess.StartInfo = $startInfo
+  [void]$agentProcess.Start()
+  # A wedged (not merely failing) helper must not block the edit indefinitely:
+  # bound the wait and kill it on timeout rather than only the host's own
+  # external tool-call timeout saving us. PS 5.1's Process class has no
+  # tree-kill overload, so this only reaches the helper itself.
+  $timeoutMs = if ($env:MONK_AGENT_HOOK_TIMEOUT_MS) { [int]$env:MONK_AGENT_HOOK_TIMEOUT_MS } else { 10000 }
+  if (-not $agentProcess.WaitForExit($timeoutMs)) {
+    try { $agentProcess.Kill() } catch {}
+  }
+} catch {
+} finally {
+  if ($agentProcess) { $agentProcess.Dispose() }
+}
 exit 0

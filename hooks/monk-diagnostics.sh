@@ -27,6 +27,18 @@ if [ -t 0 ]; then exit 0; fi
 agent="${MONK_AGENT_PATH:-${MONK_AGENT_INSTALL_DIR:-"$HOME/.monk/bin"}/monk-agent}"
 [ -x "$agent" ] || exit 0
 
-cat | "$agent" hook diagnostics --format "$fmt" || exit 0
+# A wedged (not merely failing) helper must not block the edit indefinitely:
+# background it under a watchdog that TERMs then KILLs it after
+# MONK_AGENT_HOOK_TIMEOUT_MS (default 10s) rather than only the host's own
+# external kill saving us.
+timeout_ms="${MONK_AGENT_HOOK_TIMEOUT_MS:-10000}"
+timeout_s=$(((timeout_ms + 999) / 1000))
+cat | "$agent" hook diagnostics --format "$fmt" &
+helper_pid=$!
+(sleep "$timeout_s"; kill -TERM "$helper_pid" 2>/dev/null; sleep 1; kill -KILL "$helper_pid" 2>/dev/null) &
+watchdog_pid=$!
+wait "$helper_pid" 2>/dev/null || true
+kill "$watchdog_pid" 2>/dev/null || true
+wait "$watchdog_pid" 2>/dev/null || true
 
 exit 0

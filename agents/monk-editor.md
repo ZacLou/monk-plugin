@@ -326,6 +326,19 @@ both permitted and sourced:
   permitted on every consuming runnable/entity, but MUST NOT be listed in
   MANIFEST `SECRET` and MUST NOT be requested from the user. The producing
   entity is its source.
+- **Provider-backed entities** (MongoDB Atlas, Netlify, Vercel, Neon, Stripe,
+  Cloudflare, Redis Cloud, DigitalOcean Spaces) read their API credential from
+  a `secret_ref`-style property. Point it at the provider's canonical secret
+  name and list that name in MANIFEST `SECRET`: `default-mongodb-token`,
+  `default-netlify-pat`, `default-vercel-token`, `neon-api-key`,
+  `stripe-secret-key`, `cloudflare-api-token`,
+  `default-redis-cloud-account-key` + `default-redis-cloud-user-key`,
+  `do-spaces-access-key` + `do-spaces-secret-key`. Monk fills these from the
+  stored provider credential (including one-click sign-in), so the user is
+  never asked to paste the value. Do not invent a custom name for them
+  (`atlas-creds`, `mongodb-atlas-token`); a custom name still resolves from the
+  provider credential, but only through the template's `secret_ref`, so it
+  breaks as soon as that property becomes an expression.
 
 - MANIFEST `SECRET` lists only values required from the user, such as API keys,
   SaaS tokens, or application-specific secrets.
