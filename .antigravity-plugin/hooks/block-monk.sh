@@ -26,9 +26,12 @@ input="$(cat)"
 agent="${MONK_AGENT_PATH:-${MONK_AGENT_INSTALL_DIR:-"$HOME/.monk/bin"}/monk-agent}"
 # A wedged (not merely failing) helper must not block PreToolUse for the whole
 # host budget: background it under a watchdog that TERMs then KILLs it after
-# MONK_AGENT_HOOK_TIMEOUT_MS (default 10s), so the fallback parser below still
-# gets a chance to run instead of only the host's own external kill saving us.
-timeout_ms="${MONK_AGENT_HOOK_TIMEOUT_MS:-10000}"
+# MONK_AGENT_HOOK_TIMEOUT_MS (default 2s), so the fallback parser below still
+# gets a chance to run and finish inside the host's own PreToolUse budget for
+# this hook (every host sets it to 5s) instead of losing the race to the
+# host's own external kill -- which fails OPEN (allows the command) exactly
+# like an unpatched wedged helper would (ENG-641/681/708 incident, 2026-09-02).
+timeout_ms="${MONK_AGENT_HOOK_TIMEOUT_MS:-2000}"
 timeout_s=$(((timeout_ms + 999) / 1000))
 if [ -x "$agent" ]; then
   printf '%s' "$input" | "$agent" hook block-monk --format antigravity &

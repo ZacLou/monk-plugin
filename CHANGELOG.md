@@ -1,8 +1,17 @@
 # Changelog
 
-What's new in Monk. 50 releases between May 28 and September 2, 2026, newest first.
+What's new in Monk. 51 releases between May 28 and September 3, 2026, newest first.
 
 ## Unreleased
+
+## v0.1.60, 2026-09-03
+
+- Hardening and reliability fixes to the safety checks Monk runs inside your coding agent.
+- The check that reviews a file no longer silently produces nothing — it could previously hang on
+  Windows, or come up empty on Linux.
+- Infrastructure usage now explains that a cluster's "stopped"/"running" status there tracks cost
+  reporting, not whether the cluster is connected — a cluster can show "stopped" while genuinely
+  live and healthy.
 
 ## v0.1.59, 2026-09-02
 
