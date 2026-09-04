@@ -1,8 +1,22 @@
 # Changelog
 
-What's new in Monk. 51 releases between May 28 and September 3, 2026, newest first.
+What's new in Monk. 52 releases between May 28 and September 4, 2026, newest first.
 
 ## Unreleased
+
+## v0.1.61, 2026-09-04
+
+- Listing workspace registrations, deleting a workspace/project/environment registration, and
+  re-binding an already-bound workspace now default to the workspace's own owner scope when none is
+  given, instead of an error that misleadingly claimed an organization was requested.
+- Deploying now explains when a required secret couldn't be filled in because its connected service
+  (MongoDB Atlas, Netlify, etc.) isn't set up yet, instead of a generic "secret not found" error.
+- Additional hardening to how deploy resolves secrets from connected service credentials.
+- Listing stored credentials now flags a connected service's own internal entry as internal, with a
+  note on how to actually use that connection in a template, instead of leaving your coding agent to
+  guess from a bare name.
+- A slow deploy, cluster, or workload operation that outlasts your coding agent's own wait no longer
+  tells it to open a dashboard approval link that was already approved (or denied) in the meantime.
 
 ## v0.1.60, 2026-09-03
 
