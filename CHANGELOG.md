@@ -1,8 +1,13 @@
 # Changelog
 
-What's new in Monk. 52 releases between May 28 and September 4, 2026, newest first.
+What's new in Monk. 53 releases between May 28 and September 7, 2026, newest first.
 
 ## Unreleased
+
+## v0.1.62, 2026-09-07
+
+- Reconnecting a MongoDB Atlas connection now offers to reuse your existing service account instead
+  of always creating a new one, so projects and clusters it already manages stay reachable.
 
 ## v0.1.61, 2026-09-04
 
