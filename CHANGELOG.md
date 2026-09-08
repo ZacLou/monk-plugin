@@ -1,8 +1,12 @@
 # Changelog
 
-What's new in Monk. 53 releases between May 28 and September 7, 2026, newest first.
+What's new in Monk. 54 releases between May 28 and September 8, 2026, newest first.
 
 ## Unreleased
+
+## v0.1.63, 2026-09-08
+
+- Security hardening.
 
 ## v0.1.62, 2026-09-07
 
