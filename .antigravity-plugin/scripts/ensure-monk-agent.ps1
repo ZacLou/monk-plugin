@@ -31,6 +31,16 @@ $DownloadBase = if ($env:MONK_AGENT_DOWNLOAD_BASE) { $env:MONK_AGENT_DOWNLOAD_BA
   "https://get.monk.io/$Channel"
 }
 $AutoUpdate = if ($env:MONK_AGENT_AUTO_UPDATE) { $env:MONK_AGENT_AUTO_UPDATE } else { "1" }
+# ConnectTimeoutSec bounds only reaching a response (connect/TLS/headers);
+# StallTimeoutSec is the real guard (see Invoke-FileDownload below) and should
+# stay generous -- it only fires on near-zero throughput, not a merely slow
+# one, so widening it costs nothing on a healthy connection.
+$DownloadConnectTimeoutSec = if ($env:MONK_AGENT_DOWNLOAD_CONNECT_TIMEOUT) {
+  [int]$env:MONK_AGENT_DOWNLOAD_CONNECT_TIMEOUT
+} else { 15 }
+$DownloadStallTimeoutSec = if ($env:MONK_AGENT_DOWNLOAD_STALL_TIMEOUT) {
+  [int]$env:MONK_AGENT_DOWNLOAD_STALL_TIMEOUT
+} else { 30 }
 
 $Target = Join-Path $InstallDir "monk-agent.exe"
 $ChecksumInstalled = Join-Path $InstallDir "monk-agent.sha256"
@@ -59,6 +69,43 @@ function Get-FileSha256 {
     $Stream.Dispose()
   }
   return ([System.BitConverter]::ToString($Hash) -replace "-", "").ToLowerInvariant()
+}
+
+function Invoke-FileDownload {
+  # Invoke-WebRequest's own -TimeoutSec (PS 5.1) is a hard cap on the whole
+  # request, which would abort a slow-but-progressing download. HttpWebRequest
+  # separates the two: .Timeout bounds only reaching a response (connect +
+  # headers), while .ReadWriteTimeout is a per-read deadline that resets on
+  # every chunk received -- a genuine stall guard. It shares
+  # ServicePointManager with Invoke-WebRequest, so proxy/TLS handling is
+  # unchanged; AllowAutoRedirect is set explicitly to preserve prior behavior.
+  param(
+    [string]$Uri,
+    [string]$OutFile,
+    [int]$ConnectTimeoutSec = 15,
+    [int]$StallTimeoutSec = 30
+  )
+  $Request = [System.Net.HttpWebRequest]::Create($Uri)
+  $Request.Method = "GET"
+  $Request.AllowAutoRedirect = $true
+  $Request.Timeout = $ConnectTimeoutSec * 1000
+  $Request.ReadWriteTimeout = $StallTimeoutSec * 1000
+  $Response = $Request.GetResponse()
+  try {
+    $ResponseStream = $Response.GetResponseStream()
+    try {
+      $FileStream = [System.IO.File]::Create($OutFile)
+      try {
+        $ResponseStream.CopyTo($FileStream)
+      } finally {
+        $FileStream.Dispose()
+      }
+    } finally {
+      $ResponseStream.Dispose()
+    }
+  } finally {
+    $Response.Dispose()
+  }
 }
 
 function Test-SameFilePath {
@@ -152,22 +199,35 @@ New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
 # Launchers on different ports hold different launcher mutexes but still share
 # these installer paths, so serialize the complete update transaction here.
+$InstallLockTimeoutSec = 60
+if ($env:MONK_AGENT_INSTALL_LOCK_TIMEOUT) {
+  if (-not [int]::TryParse($env:MONK_AGENT_INSTALL_LOCK_TIMEOUT, [ref]$InstallLockTimeoutSec) -or $InstallLockTimeoutSec -lt 0) {
+    Write-Error "MONK_AGENT_INSTALL_LOCK_TIMEOUT must be a non-negative integer."
+    exit 2
+  }
+}
 $InstallerMutex = New-Object System.Threading.Mutex($false, "Local\monk-agent-installer")
 $InstallerMutexOwned = $false
 try {
   try {
-    $InstallerMutexOwned = $InstallerMutex.WaitOne()
+    $InstallerMutexOwned = $InstallerMutex.WaitOne([TimeSpan]::FromSeconds($InstallLockTimeoutSec))
   } catch [System.Threading.AbandonedMutexException] {
     # A previous installer died while holding the mutex; ownership transfers to us.
     $InstallerMutexOwned = $true
   }
+  if (-not $InstallerMutexOwned) {
+    Write-Error "Timed out after ${InstallLockTimeoutSec}s waiting for another monk-agent install."
+    exit 1
+  }
 
-  # Windows PowerShell 5.1 otherwise delegates response parsing to the Internet
-  # Explorer engine, which is unavailable on Server Core and can be uninitialized
-  # on fresh desktop profiles. Downloads are files, so always use the independent
-  # basic parser (ENG-501).
+  # Invoke-FileDownload reads the response stream directly and never asks
+  # Invoke-WebRequest to parse it, so the Internet Explorer engine dependency
+  # that -UseBasicParsing exists to route around (ENG-501, unavailable on
+  # Server Core / uninitialized on fresh desktop profiles) never comes into
+  # play here.
   try {
-    Invoke-WebRequest -Uri $ChecksumUrl -OutFile $ChecksumTmp -UseBasicParsing
+    Invoke-FileDownload -Uri $ChecksumUrl -OutFile $ChecksumTmp `
+      -ConnectTimeoutSec $DownloadConnectTimeoutSec -StallTimeoutSec $DownloadStallTimeoutSec
   } catch {
     # A transient failure fetching the update-check sidecar must not abort a
     # cold start when a previously-verified local binary is already installed
@@ -208,7 +268,8 @@ try {
   }
 
   Write-Host "Installing monk-agent from $Url"
-  Invoke-WebRequest -Uri $Url -OutFile $ArchiveTmp -UseBasicParsing
+  Invoke-FileDownload -Uri $Url -OutFile $ArchiveTmp `
+    -ConnectTimeoutSec $DownloadConnectTimeoutSec -StallTimeoutSec $DownloadStallTimeoutSec
 
   $Actual = Get-FileSha256 $ArchiveTmp
   if ($Actual -ne $Expected) {

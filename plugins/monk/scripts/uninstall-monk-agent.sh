@@ -100,12 +100,24 @@ pid_matches_executable() {
   case "$pid" in
     ''|*[!0-9]*) return 1 ;;
   esac
-  [ "$(uname -s 2>/dev/null || printf unknown)" = "Linux" ] || return 1
-  actual_path="$(readlink "/proc/$pid/exe" 2>/dev/null)" || return 1
-  case "$actual_path" in
-    *" (deleted)") actual_path="${actual_path% *}" ;;
-  esac
   expected_path="$(resolve_executable_path "$expected_path")" || return 1
+  case "$(uname -s 2>/dev/null || printf unknown)" in
+    Linux)
+      actual_path="$(readlink "/proc/$pid/exe" 2>/dev/null)" || return 1
+      case "$actual_path" in
+        *" (deleted)") actual_path="${actual_path% *}" ;;
+      esac
+      ;;
+    Darwin)
+      # No /proc on macOS; BSD `ps -o comm=` reports the full executable path
+      # a process was launched with (unlike Linux's truncated-basename comm),
+      # which is exactly what identifies the managed monk-agent (ENG-674).
+      actual_path="$(ps -p "$pid" -o comm= 2>/dev/null | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+      [ -n "$actual_path" ] || return 1
+      actual_path="$(resolve_executable_path "$actual_path")" || return 1
+      ;;
+    *) return 1 ;;
+  esac
   [ "$actual_path" = "$expected_path" ]
 }
 

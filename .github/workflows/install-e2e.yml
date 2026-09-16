@@ -81,6 +81,10 @@ jobs:
         shell: bash
         run: ./tests/start-monk-agent-fastpath.sh
 
+      - name: Check installer lock deadline
+        shell: bash
+        run: ./tests/ensure-monk-agent-lock-timeout.sh
+
       - name: Check custom agent path handoff
         shell: bash
         run: ./tests/start-monk-agent-path-handoff.sh
@@ -92,6 +96,10 @@ jobs:
       - name: Check Antigravity python fallback with apostrophes
         shell: bash
         run: ./tests/start-monk-agent-antigravity-python-path.sh
+
+      - name: Check uninstaller PID identity match
+        shell: bash
+        run: ./tests/uninstall-monk-agent-pid-identity.sh
 
   windows:
     name: windows-latest

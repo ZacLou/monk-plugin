@@ -377,18 +377,21 @@ background_process_configured() {
     printf '%s\n' "$state" | grep -Fxq "autospin_url=$autospin_url"
 }
 
-if [ "${MONK_AGENT_SKIP_ENSURE:-0}" != "1" ]; then
-  if [ "$os" != "Darwin" ] && [ "$agent_updated" = "0" ] && background_process_configured && is_running; then
-    register_antigravity_mcp
-    emit_signin_nudge
-    exit 0
-  fi
+# Not gated on SKIP_ENSURE: agent_path/agent_updated above are already correct
+# whether or not ensure-monk-agent.sh ran (SKIP_ENSURE only skips computing an
+# updated hash, defaulting agent_updated to 0), so a healthy already-running
+# companion must still be reused when SKIP_ENSURE=1 instead of being
+# unconditionally killed and restarted (ENG-711).
+if [ "$os" != "Darwin" ] && [ "$agent_updated" = "0" ] && background_process_configured && is_running; then
+  register_antigravity_mcp
+  emit_signin_nudge
+  exit 0
+fi
 
-  if [ "$os" = "Darwin" ] && [ "$agent_updated" = "0" ] && is_running && launchd_configured; then
-    register_antigravity_mcp
-    emit_signin_nudge
-    exit 0
-  fi
+if [ "$os" = "Darwin" ] && [ "$agent_updated" = "0" ] && is_running && launchd_configured; then
+  register_antigravity_mcp
+  emit_signin_nudge
+  exit 0
 fi
 
 start_with_launchd() {

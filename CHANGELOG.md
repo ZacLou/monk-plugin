@@ -1,8 +1,115 @@
 # Changelog
 
-What's new in Monk. 54 releases between May 28 and September 8, 2026, newest first.
+What's new in Monk. 55 releases between May 28 and September 16, 2026, newest first.
 
 ## Unreleased
+
+## v0.1.64, 2026-09-16
+
+- Checking cluster provider availability, estimating cluster costs, checking cluster pricing,
+  browsing/searching/inspecting packages, or reading workload logs, when the local runtime isn't
+  installed or running, no longer tells you to create a cluster or leaks a raw connection error —
+  each now correctly points you at installing or starting the runtime first.
+- Installing or updating the plugin no longer waits forever when another install is stuck holding
+  the shared installation lock — it now gives up after a bounded wait and reports a clear error
+  instead of hanging your coding agent's session indefinitely.
+- Starting the plugin with automatic updates skipped no longer restarts an already-running, healthy
+  companion on every session on macOS/Linux — it now reuses it, matching the existing Windows
+  behavior.
+- Uninstalling on Windows now waits for the companion process to fully exit before removing its
+  files, instead of proceeding immediately after asking it to stop.
+- Uninstalling the plugin on Windows now removes Monk's registration from Antigravity's global MCP
+  configuration, instead of leaving a dead server entry behind.
+- Uninstalling on macOS now actually stops the running companion process, instead of only removing
+  its tracking file and leaving it running.
+- Deleting a workspace or project registration, an organization role, or a saved cluster record that
+  was never registered now reports that there's nothing to delete, instead of a false success.
+- Removing a cluster peer, or resetting one's certificate, now checks the peer actually exists in
+  the cluster instead of sending the request regardless.
+- Listing organization-scoped secrets on a personal account no longer relabels your personal secrets
+  as organization secrets — it now reports them the same way adding or removing an organization
+  secret already correctly refused to.
+- Checking ingress status right after re-enabling it no longer reports an error for a recovery that
+  actually succeeded — the health result is now reported alongside the certificate domains instead
+  of being replaced by a transient failure reading them.
+- Checking ingress status now distinguishes a transient failure to read Traefik's state from ingress
+  genuinely being disabled, instead of reporting both the same way.
+- Installing or updating the plugin no longer hangs indefinitely if the download starts but then
+  stalls partway through — it now gives up and reports a failure instead of leaving your coding
+  agent stuck waiting.
+- Binding a cluster to an environment name that doesn't exist yet used to silently create it and tag
+  every peer with it — Monk now asks before creating a new environment this way. Clearing a
+  cluster's environment link now actually unlinks it on the platform and removes the peer tag,
+  instead of reporting success while the old link stayed in place.
+- Deploying with a cluster target and a conflicting local-only override (or the reverse) is now
+  rejected instead of silently deploying locally and reporting success.
+- Deploying to an environment name that isn't declared anywhere in your project now fails clearly
+  instead of silently deploying the default entry.
+- Re-binding an already-bound workspace without repeating its project now keeps that project,
+  instead of silently treating the omission as "move to no project" and asking you to confirm a move
+  that was never intended. Confirming a genuine move now also names the actual destination,
+  including when it's clearing the project entirely, instead of a vague "the new owner/project".
+- Binding a workspace to an organization no longer registers unrelated clusters from your other
+  workspaces under that organization's project — only clusters belonging to the workspace you just
+  bound.
+- When binding a workspace also requires picking between multiple accounts or confirming a move, the
+  approval now says so upfront if it will also register any of your existing local clusters with
+  that organization, instead of only doing it silently afterward.
+- Binding a cluster you've already bound to the same organization/project no longer re-asks to copy
+  existing secrets into it every time — only a genuinely new organization/project association does.
+- Binding a cluster no longer asks to copy existing secrets when there's nothing anywhere to copy —
+  such as an organization's very first cluster.
+- Unbinding a cluster from an organization now correctly updates the platform, instead of silently
+  failing to reflect the change there.
+- Binding a cluster no longer asks to remove now-out-of-scope secrets when its KV never had anything
+  at the scope it's leaving.
+- Additional hardening to how a cluster's secrets are kept in sync with its current organization,
+  project, and environment.
+- Creating a cluster while an unrelated environment was still selected no longer tries to link the
+  new cluster to that environment — only an environment you explicitly ask for gets linked.
+- Reading logs for a workload whose container has already stopped now says so, instead of returning
+  logs that look like a healthy, running service.
+- Deploying no longer reports success when the deployed workload isn't actually running afterward —
+  it now fails so you know to look.
+- Listing a cluster's peers or providers for a cluster your workspace hasn't adopted yet now says
+  so, instead of looking identical to an adopted cluster.
+- Growing or creating a cluster no longer reports success before its new node has actually joined —
+  it now confirms the join and, if a node never appears, fails clearly naming how many actually did.
+- Growing a cluster now refuses to add cloud nodes to the local, credentials-only cluster shell, and
+  points you at creating a real cluster instead. Dashboard error messages now show the actual reason
+  for a failure instead of a generic status code.
+- Reading logs for a workload identified by an ambiguous short name now fails clearly instead of
+  silently guessing — which could otherwise show a different workload's logs.
+- Setting a preference with an empty key is now rejected, instead of being stored and read back to
+  you as a blank key.
+- Storing a very large secret in the fallback encrypted vault, used only when your OS keychain isn't
+  available, no longer crashes — large values now encode correctly.
+- Removing or re-adding an account-wide secret from a workspace other than the one that created it
+  now works correctly, instead of silently failing or creating a duplicate entry.
+- Adding or requesting a secret with an empty or invalid name is now rejected outright, instead of
+  being stored as a malformed entry. Secret tool descriptions now also explain that your local vault
+  and a cluster's own secret store are separate, synced only when you deploy — so the two not
+  matching isn't a bug.
+- A cluster whose creation failed partway through, after its nodes were already provisioned, now
+  keeps its organization and project association when it's preserved for a retry — instead of
+  becoming invisible to every organization-scoped tool until you re-bind it by hand.
+- Setting an ingress certificate now records the request before contacting the cluster, so a slow or
+  failed connection leaves a visible, cleanly-cancelled request instead of vanishing with no trace.
+- Resetting a cluster peer's certificate now checks the peer actually exists before opening the
+  approval, matching the other peer operations.
+- Upgrading a cluster to a version that doesn't actually exist is now caught before the upgrade
+  approval opens, instead of failing partway through the upgrade itself.
+- Updating a capsule's schedule now validates the times, weekdays, and timezone before opening the
+  approval, so what you approve is what actually gets saved. It also refuses to schedule a capsule
+  that was never set up, explaining why instead of silently accepting it.
+- Removing a watcher that was never deployed now says so, instead of reporting it as removed — and
+  no longer opens an approval before checking whether it's deployed at all.
+- Watcher operations now recognize a cluster peer as local or remote the same way status checks do,
+  instead of using a narrower check that could misclassify one.
+- Stopping, deleting, or unloading a workload that doesn't exist now fails immediately, instead of
+  opening an approval for an operation that could never succeed.
+- Additional hardening to cross-cluster secret resolution during deploy, and to how role changes are
+  validated and reported.
 
 ## v0.1.63, 2026-09-08
 

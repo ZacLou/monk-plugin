@@ -17,6 +17,12 @@ install_dir="${MONK_AGENT_INSTALL_DIR:-"$HOME/.monk/bin"}"
 channel="${MONK_AGENT_CHANNEL:-stable}"
 download_base="${MONK_AGENT_DOWNLOAD_BASE:-"https://get.monk.io/$channel"}"
 auto_update="${MONK_AGENT_AUTO_UPDATE:-1}"
+# connect_timeout bounds only reaching a response (DNS/TCP/TLS/headers);
+# stall_timeout is the real guard (see download_checksum() below) and should
+# stay generous -- it only fires on near-zero throughput, not a merely slow
+# one, so widening it costs nothing on a healthy connection.
+download_connect_timeout="${MONK_AGENT_DOWNLOAD_CONNECT_TIMEOUT:-15}"
+download_stall_timeout="${MONK_AGENT_DOWNLOAD_STALL_TIMEOUT:-30}"
 target="$install_dir/monk-agent"
 checksum_installed="$install_dir/monk-agent.sha256"
 
@@ -55,10 +61,20 @@ trap cleanup EXIT
 # rather than fail -- per-PID scratch paths below still keep each invocation's
 # download/extract isolated even without the lock.
 if command -v flock >/dev/null 2>&1; then
+  install_lock_timeout="${MONK_AGENT_INSTALL_LOCK_TIMEOUT:-60}"
+  case "$install_lock_timeout" in
+    ''|*[!0-9]*)
+      echo "MONK_AGENT_INSTALL_LOCK_TIMEOUT must be a non-negative integer." >&2
+      exit 2
+      ;;
+  esac
   exec 3>"$lock_file"
   if ! flock -n 3; then
-    echo "Another monk-agent install is in progress; waiting..." >&2
-    flock 3
+    echo "Another monk-agent install is in progress; waiting up to ${install_lock_timeout}s..." >&2
+    if ! flock -w "$install_lock_timeout" 3; then
+      echo "Timed out after ${install_lock_timeout}s waiting for another monk-agent install." >&2
+      exit 1
+    fi
   fi
 fi
 
@@ -73,11 +89,16 @@ if [ "$auto_update" = "0" ] || [ "$auto_update" = "false" ]; then
   fi
 fi
 
+# wget's -T mirrors --speed-time (its read timeout resets on every chunk
+# received); -t 1 stops it from retrying past our own
+# fallback-to-installed-binary logic below.
 download_checksum() {
   if command -v curl >/dev/null 2>&1; then
-    curl -fL "$checksum_url" -o "$checksum_tmp"
+    curl -fL --connect-timeout "$download_connect_timeout" \
+      --speed-limit 1 --speed-time "$download_stall_timeout" \
+      "$checksum_url" -o "$checksum_tmp"
   elif command -v wget >/dev/null 2>&1; then
-    wget -O "$checksum_tmp" "$checksum_url"
+    wget -O "$checksum_tmp" -t 1 -T "$download_stall_timeout" "$checksum_url"
   else
     echo "curl or wget is required to check for monk-agent updates." >&2
     return 2
@@ -127,9 +148,11 @@ fi
 
 echo "Installing monk-agent from $url" >&2
 if command -v curl >/dev/null 2>&1; then
-  curl -fL "$url" -o "$archive_tmp"
+  curl -fL --connect-timeout "$download_connect_timeout" \
+    --speed-limit 1 --speed-time "$download_stall_timeout" \
+    "$url" -o "$archive_tmp"
 elif command -v wget >/dev/null 2>&1; then
-  wget -O "$archive_tmp" "$url"
+  wget -O "$archive_tmp" -t 1 -T "$download_stall_timeout" "$url"
 fi
 
 if command -v shasum >/dev/null 2>&1; then

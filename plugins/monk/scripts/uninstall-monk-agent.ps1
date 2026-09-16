@@ -83,6 +83,11 @@ function Stop-ManagedAgent {
     }
     if (Test-SameFilePath $processPath $Target) {
       Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+      try {
+        Wait-Process -Id $process.Id -Timeout 10 -ErrorAction SilentlyContinue
+      } catch {
+        Start-Sleep -Milliseconds 500
+      }
     }
   }
   Remove-Item -Force $PidFile -ErrorAction SilentlyContinue
@@ -203,8 +208,42 @@ fi
   Assert-NativeCommandSucceeded "Removing Monk runtime from WSL distro '$distro'" $LASTEXITCODE
 }
 
+# Remove the mcpServers.monk entry Register-AntigravityMcp (start-monk-agent.ps1)
+# adds to Antigravity's global config, preserving unrelated servers, so a dead
+# MCP registration doesn't outlive the uninstall (ENG-649; POSIX parity with
+# remove_antigravity_mcp() in uninstall-monk-agent.sh).
+function Remove-AntigravityMcp {
+  $ConfigPath = Join-Path $HOME ".gemini\config\mcp_config.json"
+  if (-not (Test-Path $ConfigPath) -or -not (Get-Item $ConfigPath).Length) {
+    return
+  }
+  try {
+    $Config = Get-Content -Raw $ConfigPath | ConvertFrom-Json
+  } catch {
+    return
+  }
+  if ($null -eq $Config -or $null -eq $Config.mcpServers) {
+    return
+  }
+  if ($Config.mcpServers.PSObject.Properties.Name -notcontains "monk") {
+    return
+  }
+  $Config.mcpServers.PSObject.Properties.Remove("monk")
+  if (-not $Config.mcpServers.PSObject.Properties.Name.Length) {
+    $Config.PSObject.Properties.Remove("mcpServers")
+  }
+  $TempPath = "$ConfigPath.tmp-$PID"
+  try {
+    $Config | ConvertTo-Json -Depth 100 | Set-Content -Encoding UTF8 $TempPath
+    Move-Item -Force $TempPath $ConfigPath
+  } finally {
+    Remove-Item -Force $TempPath -ErrorAction SilentlyContinue
+  }
+}
+
 Stop-ManagedAgent
 Remove-AgentFiles
+Remove-AntigravityMcp
 if ($Runtime) {
   Remove-MonkRuntime
 }
